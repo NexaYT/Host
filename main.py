@@ -20,8 +20,8 @@ import requests
 # CONFIGURATION
 API_TOKEN = "8605874531:AAF7DXId7CGd3LOKrhhSdXGWTzd0K7uurGs"  # Render environment variable use korbo
 ADMIN_ID = 5913459788  # Your Telegram User ID
-PORT = int(os.environ.get('PORT', 8080))
-RENDER_EXTERNAL_URL = os.environ.get('RENDER_EXTERNAL_URL', 'http://localhost:8080')
+PORT = int(os.environ.get('PORT', 3000))
+RENDER_EXTERNAL_URL = os.environ.get('RENDER_EXTERNAL_URL', 'http://localhost:3000')
 
 # Environment variable theke token nibe (Render e set korte hobe)
 if os.environ.get('BOT_TOKEN'):
