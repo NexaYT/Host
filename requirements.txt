@@ -1,5 +1,7 @@
 requests>=2.31.0
-pyTelegramBotAPI
+pyTelegramBotAPI>=4.14.0
 psutil
 Flask
 telethon
+python-telegram-bot
+aiohttp
