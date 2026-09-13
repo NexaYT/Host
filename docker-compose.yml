@@ -1,0 +1,40 @@
+version: "3.9"
+
+services:
+  hostbot:
+    build: .
+    container_name: bot_hosting_system
+    restart: unless-stopped
+
+    # ── Environment variables ─────────────────────────────────
+    environment:
+      - BOT_TOKEN=${BOT_TOKEN}           # required: your bot token
+      - ADMIN_ID=${ADMIN_ID}             # required: your Telegram user ID
+      - BACKUP_CHANNEL=${BACKUP_CHANNEL} # optional: channel ID for cloud backup
+      - PORT=8080
+
+    # ── Ports ────────────────────────────────────────────────
+    ports:
+      - "8080:8080"
+
+    # ── Persistent volumes ───────────────────────────────────
+    # These folders survive container restarts and rebuilds.
+    # On host change: copy these folders to the new server.
+    volumes:
+      - ./hosted_bots:/app/hosted_bots   # bot .py files
+      - ./data:/app/data                  # config + logs
+
+    # ── Health check ─────────────────────────────────────────
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+    # ── Logging ──────────────────────────────────────────────
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

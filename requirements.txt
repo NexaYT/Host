@@ -1,2 +1,5 @@
-pyTelegramBotAPI
-requests
+# Core dependencies for host28_updated.py
+# (packages used by the hosted bots are auto-installed at runtime)
+
+pyTelegramBotAPI>=4.14.0
+requests>=2.31.0
