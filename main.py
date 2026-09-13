@@ -36,7 +36,7 @@ from flask import Flask, jsonify
 # ═══════════════════════════════════════════════════════════════
 # CONFIG — Fill in your details here
 # ═══════════════════════════════════════════════════════════════
-TOKEN          = "8947601300:AAEBTLksBDp5Kyx9GpdCLfxR1QvXECKMu_k"
+TOKEN          = "8947601300:AAFkxgtiJOAq7HwAskNW3qJnWbQDQMq79fc"
 OWNER_ID       = 5913459788
 ADMIN_USERNAME = "@lod_Shadow"
 UPDATE_CHANNEL = "https://t.me/nexasms"
