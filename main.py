@@ -14,9 +14,24 @@ def _auto_install(pkg, pip_name=None):
         __import__(pkg)
     except ModuleNotFoundError:
         name = pip_name or pkg
-        subprocess.check_call(
-            [sys.executable, "-m", "pip", "install", name, "--break-system-packages"],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # On Termux, some packages (e.g. psutil) must be installed via pkg,
+        # not pip, because they require native compilation.
+        _TERMUX_PKG_MAP = {
+            "psutil": "python-psutil",
+        }
+        installed = False
+        if name in _TERMUX_PKG_MAP:
+            try:
+                subprocess.check_call(
+                    ["pkg", "install", "-y", _TERMUX_PKG_MAP[name]],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                installed = True
+            except Exception:
+                pass
+        if not installed:
+            subprocess.check_call(
+                [sys.executable, "-m", "pip", "install", name, "--break-system-packages"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 _auto_install("telebot", "pyTelegramBotAPI")
 _auto_install("psutil",  "psutil")
@@ -36,7 +51,7 @@ from flask import Flask, jsonify
 # ═══════════════════════════════════════════════════════════════
 # CONFIG — Fill in your details here
 # ═══════════════════════════════════════════════════════════════
-TOKEN          = "8340680055:AAGzppoMHhkd7mQGwY9xufAum5DXuD8jqc8"
+TOKEN          = "8947601300:AAFkxgtiJOAq7HwAskNW3qJnWbQDQMq79fc"
 OWNER_ID       = 5913459788
 ADMIN_USERNAME = "@lod_Shadow"
 UPDATE_CHANNEL = "https://t.me/nexasms"
@@ -1356,47 +1371,6 @@ def get_screen(uid):
     return _user_screen.get(uid, ("main", None))
 
 # ═══════════════════════════════════════════════════════════════
-# HELPERS
-# ═══════════════════════════════════════════════════════════════
-def is_premium(uid):
-    if uid in admin_ids:
-        return True
-    sub = user_subscriptions.get(uid)
-    return bool(sub and sub["expiry"] > datetime.now())
-
-def get_bot_limit(uid):
-    if uid in admin_ids:
-        return 999
-    sub = user_subscriptions.get(uid)
-    if sub and sub["expiry"] > datetime.now():
-        return sub["bot_limit"]
-    return system_settings.get("free_limit", 1)
-
-def get_storage_limit(uid):
-    override = db_get_user_storage_override(uid)
-    if override is not None:
-        return override
-    prem = is_premium(uid)
-    return system_settings["premium_storage_mb"] if prem else system_settings["free_storage_mb"]
-
-def get_sub_info(uid):
-    if uid in admin_ids:
-        return True, 999, "Unlimited", 9999
-    sub = user_subscriptions.get(uid)
-    if sub and sub["expiry"] > datetime.now():
-        days = (sub["expiry"] - datetime.now()).days
-        return True, sub["bot_limit"], sub["expiry"].strftime("%Y-%m-%d"), days
-    return False, system_settings.get("free_limit", 1), "-", 0
-
-def is_running(uid, slot):
-    key  = f"{uid}_{slot}"
-    info = bot_scripts.get(key)
-    return bool(info and info.get("proc") and info["proc"].poll() is None)
-
-def running_count_user(uid):
-    return sum(1 for f in user_files_db.get(uid, []) if is_running(uid, f["slot"]))
-
-# ═══════════════════════════════════════════════════════════════
 # ★ FAKE SECURITY SCAN
 # ═══════════════════════════════════════════════════════════════
 def send_fake_security_scan(cid):
@@ -2015,7 +1989,7 @@ def _cleanup_thread():
                         info["log_file"].close()
                     except Exception:
                         pass
-                    parts = key.split("_")
+                    parts = key.split("_", 1)
                     if len(parts) == 2:
                         uid, slot = int(parts[0]), int(parts[1])
                         db_update_file_status(uid, slot, "stopped")
@@ -2056,6 +2030,9 @@ def cmd_start(msg):
 
     if uid in banned_users:
         bot.reply_to(msg, "🚫 You have been banned from this bot.")
+        return
+    if bot_locked and uid not in admin_ids:
+        bot.reply_to(msg, "🔒 Bot is currently locked.")
         return
     if maintenance_mode and uid not in admin_ids:
         bot.reply_to(msg, "🔧 Bot is under maintenance. Please try later.")
@@ -2268,6 +2245,8 @@ def handle_text(msg):
     text = msg.text.strip()
 
     if uid in banned_users:
+        return
+    if bot_locked and uid not in admin_ids:
         return
     if maintenance_mode and uid not in admin_ids:
         bot.reply_to(msg, "🔧 Bot under maintenance.")
@@ -2939,6 +2918,8 @@ def handle_document(msg):
     uid = msg.from_user.id
     if uid in banned_users:
         return
+    if bot_locked and uid not in admin_ids:
+        return
     if maintenance_mode and uid not in admin_ids:
         bot.reply_to(msg, "🔧 Bot under maintenance.")
         return
@@ -3059,6 +3040,12 @@ def handle_document(msg):
 @bot.message_handler(content_types=["photo"])
 def handle_photo(msg):
     uid = msg.from_user.id
+    if uid in banned_users:
+        return
+    if bot_locked and uid not in admin_ids:
+        return
+    if maintenance_mode and uid not in admin_ids:
+        return
     if uid in payment_state:
         _receive_payment_screenshot(msg, uid)
 
@@ -3281,7 +3268,7 @@ def _cb(call, uid, data):
         bot.answer_callback_query(call.id, "⏹️ Stopping...")
         count = 0
         for key in [k for k in bot_scripts if k.startswith(f"{target}_")]:
-            slot_str = key.split("_")[1]
+            slot_str = key.split("_", 1)[1]
             _stop_script_key(target, int(slot_str))
             count += 1
         bot.send_message(cid, f"⏹️ Stopped {count} scripts for <code>{target}</code>.", parse_mode="HTML")
@@ -4053,13 +4040,11 @@ How it works:
     - Bot fetches all #SCRIPT_BACKUP messages → downloads → restores folders
     - After restore → load_data() reloads everything
   AUTO-BACKUP:
-    - Every 6 hours, a background thread runs full backup.
+    - Every 1 hour, a background thread runs full backup.
   COMMANDS (owner only):
     /backup  → manual backup now
     /restore → restore from channel
 """
-
-import json as _json
 
 _BACKUP_TAG_DB     = "#DB_BACKUP"
 _BACKUP_TAG_SCRIPT = "#SCRIPT_BACKUP"
@@ -4245,31 +4230,16 @@ def tg_restore_all(notify_uid=None):
 
         try:
             # ── Fetch messages from channel ───────────────────────
-            # We search up to 500 recent messages
-            db_msg     = None
+            # Scan channel message IDs 1..5000 by forwarding each to the owner.
+            # We always overwrite db_msg so the LAST found = highest ID = latest backup.
+            # Forwarded copies are deleted immediately after reading.
+            # NOTE: We do NOT call bot.get_updates() here — that would drain the
+            #       update queue and cause infinity_polling to miss messages.
+            db_msg      = None
             script_msgs = []
 
-            offset = 0
-            while True:
+            for msg_id in range(1, 5001):
                 try:
-                    updates = bot.get_updates(offset=offset, limit=100, timeout=10)
-                except Exception:
-                    break
-                if not updates:
-                    break
-                offset = updates[-1].update_id + 1
-
-            # Use forward_messages approach — fetch channel history via getUpdates
-            # (better: use bot.get_channel_history via raw API call)
-            # We use bot.forward approach with message IDs scanning
-            # Scan last 1000 message IDs in channel
-            found_db     = False
-            all_captions = []
-
-            for msg_id in range(1, 2000):
-                try:
-                    # Try to copy message to a temp location to read its caption
-                    # Actually use get_chat workaround — send a forwardMessage
                     raw = bot.forward_message(
                         chat_id=notify_uid or OWNER_ID,
                         from_chat_id=BACKUP_CHANNEL_ID,
@@ -4278,18 +4248,31 @@ def tg_restore_all(notify_uid=None):
                     )
                     cap = raw.caption or raw.text or ""
 
-                    if _BACKUP_TAG_DB in cap and not found_db:
+                    # Always overwrite → last DB backup found = most recent
+                    if _BACKUP_TAG_DB in cap:
+                        # Delete previous forwarded DB msg if any
+                        if db_msg:
+                            try:
+                                bot.delete_message(db_msg.chat.id, db_msg.message_id)
+                            except Exception:
+                                pass
                         db_msg = raw
-                        found_db = True
 
-                    if _BACKUP_TAG_SCRIPT in cap:
+                    elif _BACKUP_TAG_SCRIPT in cap:
                         script_msgs.append(raw)
+                        # Delete script forward immediately
+                        try:
+                            bot.delete_message(raw.chat.id, raw.message_id)
+                        except Exception:
+                            pass
+                    else:
+                        # Not a backup message — delete immediately
+                        try:
+                            bot.delete_message(raw.chat.id, raw.message_id)
+                        except Exception:
+                            pass
 
-                    # Delete the forwarded message immediately
-                    try:
-                        bot.delete_message(raw.chat.id, raw.message_id)
-                    except Exception:
-                        pass
+                    time.sleep(0.05)   # avoid Telegram flood limits
 
                 except Exception:
                     pass   # message doesn't exist or can't be forwarded
@@ -4309,6 +4292,11 @@ def tg_restore_all(notify_uid=None):
                     logger.info("DB restored from backup channel.")
                 except Exception as e:
                     logger.error(f"DB restore error: {e}")
+                finally:
+                    try:
+                        bot.delete_message(db_msg.chat.id, db_msg.message_id)
+                    except Exception:
+                        pass
 
             # ── Restore scripts ───────────────────────────────────
             for smsg in script_msgs:
