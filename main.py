@@ -36,7 +36,7 @@ from flask import Flask, jsonify
 # ═══════════════════════════════════════════════════════════════
 # CONFIG — Fill in your details here
 # ═══════════════════════════════════════════════════════════════
-TOKEN          = "8605874531:AAF7DXId7CGd3LOKrhhSdXGWTzd0K7uurGs"
+TOKEN          = "8340680055:AAGzppoMHhkd7mQGwY9xufAum5DXuD8jqc8"
 OWNER_ID       = 5913459788
 ADMIN_USERNAME = "@lod_Shadow"
 UPDATE_CHANNEL = "https://t.me/nexasms"
@@ -2263,6 +2263,7 @@ def cmd_broadcast_cmd(msg):
 # ═══════════════════════════════════════════════════════════════
 @bot.message_handler(func=lambda m: m.text and not m.text.startswith("/"))
 def handle_text(msg):
+    global bot_locked, maintenance_mode
     uid  = msg.from_user.id
     text = msg.text.strip()
 
@@ -2720,7 +2721,6 @@ def handle_text(msg):
                 return
 
     elif text == "🔒 Toggle Bot Lock" and uid in admin_ids:
-        global bot_locked
         bot_locked = not bot_locked
         db_set_setting("bot_locked", "1" if bot_locked else "0")
         bot.send_message(
@@ -2733,7 +2733,6 @@ def handle_text(msg):
         )
 
     elif text == "🔧 Toggle Maintenance" and uid in admin_ids:
-        global maintenance_mode
         maintenance_mode = not maintenance_mode
         db_set_setting("maintenance", "1" if maintenance_mode else "0")
         bot.send_message(
