@@ -1,56 +1,49 @@
-# ============================================================
-#  Bot Hosting System — Dockerfile
-#  Base: Python 3.11 slim (small image, fast build)
-# ============================================================
+# Stage 1: Build the Application
+# We use python:3.11 as the base for building and installing dependencies.
+FROM python:3.11 AS build
 
-FROM python:3.11-slim
+# Set the working directory inside the container
+WORKDIR /usr/src/app
 
-# ── System dependencies ──────────────────────────────────────
-# gcc / libffi / libssl are needed by some bot packages (e.g. cryptography, cffi)
-# pip is upgraded so package installs inside the container work reliably
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        gcc \
-        libffi-dev \
-        libssl-dev \
-        curl \
-    && rm -rf /var/lib/apt/lists/*
+# Install system dependencies if needed
+RUN apt-get update && apt-get install -y --no-install-recommends     build-essential     && rm -rf /var/lib/apt/lists/*
 
-# ── Working directory ────────────────────────────────────────
-WORKDIR /app
+# Create a virtual environment
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
-# ── Python dependencies ──────────────────────────────────────
-# Copy requirements first so Docker can cache this layer separately.
-# If only host28_updated.py changes, pip install is NOT re-run.
-COPY requirements.txt .
-RUN pip install --upgrade pip \
- && pip install --no-cache-dir -r requirements.txt
+# Copy requirements.txt if it exists (using wildcard to avoid build failure)
+COPY requirements.tx[t] ./requirements.txt
 
-# ── App source ───────────────────────────────────────────────
-COPY host28_updated.py .
+# Install Python dependencies only if requirements.txt exists
+RUN pip install --upgrade pip &&     if [ -f requirements.txt ]; then         pip install -r requirements.txt;     fi
 
-# ── Persistent data directories ──────────────────────────────
-# hosted_bots/  → uploaded bot .py files
-# data/         → config JSON, logs
-# Mount these as Docker volumes so data survives container restarts.
-RUN mkdir -p /app/hosted_bots /app/data
+# Copy the rest of the application source code
+COPY . .
 
-# ── Environment variables (override at runtime) ───────────────
-# BOT_TOKEN       — your Telegram bot token (required)
-# ADMIN_ID        — your Telegram user ID  (required)
-# BACKUP_CHANNEL  — channel ID for cloud backup (optional)
-# PORT            — HTTP health-check port (default 8080)
-ENV PORT=8080 \
-    PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
+# Stage 2: Create the Final Production Image
+# We use python:3.11 as the runtime image with all the necessary tools.
+FROM python:3.11
 
-# ── Health-check ──────────────────────────────────────────────
-# Docker / Render will probe /ping every 30 s.
-# If the bot hangs, the container is restarted automatically.
-HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
-    CMD curl -f http://localhost:${PORT}/ping || exit 1
+# Set the working directory
+WORKDIR /usr/src/app
 
-# ── Expose port ───────────────────────────────────────────────
-EXPOSE ${PORT}
+# Copy the virtual environment from the build stage
+COPY --from=build /opt/venv /opt/venv
 
-# ── Entry point ───────────────────────────────────────────────
-CMD ["python", "-u", "main.py"]
+# Copy the application code
+COPY --from=build /usr/src/app .
+
+# Set the virtual environment as the active Python environment
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Create a non-root user to run the application
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /usr/src/app
+USER appuser
+
+# Expose the port your app runs on
+ENV PORT=8080
+EXPOSE $PORT
+
+# Define the command to start your application
+CMD ["python", "app.py"]

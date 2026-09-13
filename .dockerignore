@@ -1,33 +1,82 @@
-# Git
-.git
-.gitignore
-
-# Python cache
+# Python cache files
 __pycache__/
 *.py[cod]
-*.pyo
-*.pyd
+*$py.class
+*.so
 .Python
 
 # Virtual environments
 venv/
 env/
-.venv/
+ENV/
+.venv
+.ENV
 
-# Local data (don't bake into image — use volumes)
-hosted_bots/
-bot_config.json
-bot_logs.txt
-error_logs.txt
-data/
+# Distribution / packaging
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
 
-# Editor / OS
-.DS_Store
-.idea/
+# Testing
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+.pytest_cache/
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+
+# pyenv
+.python-version
+
+# Project files
+.git
+.gitignore
+.dockerignore
+Dockerfile
+fly.toml
+README.md
+docs/
+
+# IDEs
 .vscode/
+.idea/
 *.swp
 *.swo
-Thumbs.db
+.DS_Store
 
-# Docker compose override files
-docker-compose.override.yml
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/
