@@ -53,4 +53,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
 EXPOSE ${PORT}
 
 # ── Entry point ───────────────────────────────────────────────
-CMD ["python", "-u", "host28_updated.py"]
+CMD ["python", "-u", "main.py"]
