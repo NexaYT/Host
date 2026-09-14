@@ -1410,9 +1410,9 @@ def send_fake_security_scan(cid):
             "🔵 Code analysis complete ✓\n"
             "🔵 Security check complete ✓\n\n"
             "━━━━━━━━━━━━━━━━━━━━━━━\n"
-            "⚙️ <i>Preparing system deployment...</i>\n"
+            "📋 <i>Submitted for admin review.</i>\n"
             "━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            "⏳ <b>Your script will start shortly.</b>",
+            "⏳ <b>Your file is pending approval. You will be notified when it's ready.</b>",
             cid, m.message_id, parse_mode="HTML"
         )
     except Exception:
@@ -1545,9 +1545,13 @@ def _pip_silent(pkg):
         return False
 
 def run_script(uid, slot, reply_msg, attempt=1):
+    # ★ সব message সবসময় user (uid)-এর chat-এ যাবে
+    # reply_msg শুধু cwd/context-এর জন্য রাখা হয়েছে
+    user_cid = uid
+
     fi = get_file_by_slot(uid, slot)
     if not fi:
-        safe_send(reply_msg.chat.id, "❌ Script not found.")
+        safe_send(user_cid, "❌ Script not found.")
         return
     key    = f"{uid}_{slot}"
     folder = os.path.join(get_user_folder(uid), f"script_{slot}")
@@ -1562,10 +1566,9 @@ def run_script(uid, slot, reply_msg, attempt=1):
         cmd  = ["node", path]
     elif ftype == "php":
         path = os.path.join(folder, fname)
-        # Check php-cli available
         php_bin = shutil.which("php") or shutil.which("php8") or shutil.which("php7")
         if not php_bin:
-            safe_send(reply_msg.chat.id,
+            safe_send(user_cid,
                 "❌ PHP CLI not found on this server.\n"
                 "Ask admin to install: <code>sudo apt install php-cli</code>",
                 parse_mode="HTML"
@@ -1576,7 +1579,7 @@ def run_script(uid, slot, reply_msg, attempt=1):
         # ZIP — use smart_find_main_file
         main_rel, detected_type = smart_find_main_file(folder)
         if not main_rel:
-            safe_send(reply_msg.chat.id, "❌ No entry-point found in project folder.")
+            safe_send(user_cid, "❌ No entry-point found in project folder.")
             return
         path = os.path.join(folder, main_rel)
         if detected_type == "py":
@@ -1586,21 +1589,21 @@ def run_script(uid, slot, reply_msg, attempt=1):
         elif detected_type == "php":
             php_bin = shutil.which("php") or shutil.which("php8") or shutil.which("php7")
             if not php_bin:
-                safe_send(reply_msg.chat.id,
+                safe_send(user_cid,
                     "❌ PHP CLI not found on this server.",
                     parse_mode="HTML"
                 )
                 return
             cmd = [php_bin, path]
         else:
-            safe_send(reply_msg.chat.id, "❌ Unsupported file type in ZIP.")
+            safe_send(user_cid, "❌ Unsupported file type in ZIP.")
             return
 
     if not os.path.exists(path):
-        safe_send(reply_msg.chat.id, f"❌ File <code>{h(fname)}</code> not found.")
+        safe_send(user_cid, f"❌ File <code>{h(fname)}</code> not found.", parse_mode="HTML")
         return
     if attempt > 2:
-        safe_send(reply_msg.chat.id, f"❌ Could not start <code>{h(fname)}</code>.")
+        safe_send(user_cid, f"❌ Could not start <code>{h(fname)}</code>.", parse_mode="HTML")
         return
 
     if attempt == 1:
@@ -1649,15 +1652,17 @@ def run_script(uid, slot, reply_msg, attempt=1):
                         ).start()
                     else:
                         safe_send(
-                            reply_msg.chat.id,
+                            user_cid,
                             f"❌ Failed to install package <code>{h(pkg_to_install)}</code>.\n\n"
-                            f"💡 Use <b>📦 Module Installation</b> to install it manually."
+                            f"💡 Use <b>📦 Module Installation</b> to install it manually.",
+                            parse_mode="HTML"
                         )
                     return
 
                 safe_send(
-                    reply_msg.chat.id,
-                    f"❌ Script error:\n<pre>{h(err[:600])}</pre>"
+                    user_cid,
+                    f"❌ Script error:\n<pre>{h(err[:600])}</pre>",
+                    parse_mode="HTML"
                 )
                 return
 
@@ -1666,7 +1671,7 @@ def run_script(uid, slot, reply_msg, attempt=1):
                 chk.kill()
                 chk.communicate()
         except FileNotFoundError:
-            safe_send(reply_msg.chat.id, "❌ Python/Node not found.")
+            safe_send(user_cid, "❌ Python/Node not found.")
             return
         finally:
             if chk and chk.poll() is None:
@@ -1677,7 +1682,7 @@ def run_script(uid, slot, reply_msg, attempt=1):
     try:
         lf = open(log_path, "w", encoding="utf-8", errors="ignore")
     except Exception as e:
-        safe_send(reply_msg.chat.id, f"❌ Could not create log file: {e}")
+        safe_send(user_cid, f"❌ Could not create log file: {e}")
         return
     try:
         proc = subprocess.Popen(
@@ -1686,7 +1691,7 @@ def run_script(uid, slot, reply_msg, attempt=1):
         )
     except FileNotFoundError:
         lf.close()
-        safe_send(reply_msg.chat.id, "❌ Python/Node not found.")
+        safe_send(user_cid, "❌ Python/Node not found.")
         return
 
     bot_scripts[key] = {
@@ -1694,11 +1699,14 @@ def run_script(uid, slot, reply_msg, attempt=1):
         "folder": folder, "started": datetime.now()
     }
     db_update_file_status(uid, slot, "running")
+    # ★ User-কে success message + updated keyboard পাঠানো হচ্ছে
     safe_send(
-        reply_msg.chat.id,
-        f"✅ <b>Deployment complete!</b>\n\n"
-        f"🟢 <b>{h(fname)}</b> is now running!\n"
-        f"🔢 PID: <code>{proc.pid}</code>"
+        user_cid,
+        f"✅ <b>Script is now running!</b>\n\n"
+        f"🟢 <b>{h(fname)}</b> started successfully!\n"
+        f"🔢 PID: <code>{proc.pid}</code>",
+        rkb_file_control(uid, slot),
+        parse_mode="HTML"
     )
     logger.info(f"Script started: uid={uid} slot={slot} pid={proc.pid}")
     if is_premium(uid):
@@ -1906,20 +1914,22 @@ def handle_zip_extract(content, fname, uid, slot, folder, reply_msg):
                 f["file_name"] = os.path.basename(main_rel)
                 f["file_type"] = detected_type
 
+        # ★ ZIP extract success — user-কে জানানো হচ্ছে
         safe_send(
-            reply_msg.chat.id,
-            f"📦 <b>ZIP extracted.</b>\n"
-            f"🎯 Detected entry point: <code>{h(main_rel)}</code> ({detected_type.upper()})",
+            uid,
+            f"📦 <b>ZIP extracted successfully.</b>\n"
+            f"🎯 Entry point: <code>{h(main_rel)}</code> ({detected_type.upper()})\n\n"
+            f"▶️ Starting script...",
             parse_mode="HTML"
         )
         db_update_file_status(uid, slot, "approved")
         threading.Thread(target=run_script, args=(uid, slot, reply_msg), daemon=True).start()
 
     except zipfile.BadZipFile:
-        safe_send(reply_msg.chat.id, "❌ ZIP file is corrupted.")
+        safe_send(uid, "❌ ZIP file is corrupted. Please re-upload.")
         db_update_file_status(uid, slot, "rejected")
     except Exception as e:
-        safe_send(reply_msg.chat.id, f"❌ ZIP extract failed: {h(str(e))}")
+        safe_send(uid, f"❌ ZIP extract failed: {h(str(e))}", parse_mode="HTML")
 
 # ═══════════════════════════════════════════════════════════════
 # BACKGROUND THREADS
@@ -2816,8 +2826,23 @@ def handle_text(msg):
 
 def _go_back(msg, uid, screen):
     name = msg.from_user.username or msg.from_user.first_name or "User"
-    if screen in ("user_panel", "my_scripts", "file_control", "buy_premium",
-                  "upload", "session_menu", "broadcast"):
+    # ★ file_control থেকে Back করলে My Scripts-এ যাবে (main-এ নয়)
+    if screen == "file_control":
+        set_screen(uid, "my_scripts")
+        files = user_files_db.get(uid, [])
+        bot.send_message(
+            msg.chat.id, build_my_scripts(uid),
+            reply_markup=rkb_my_scripts() if files else rkb_back(),
+            parse_mode="HTML"
+        )
+        if files:
+            bot.send_message(
+                msg.chat.id,
+                "📌 Select a script to control:",
+                reply_markup=kb_my_scripts_inline(uid)
+            )
+    elif screen in ("user_panel", "my_scripts", "buy_premium",
+                    "upload", "session_menu", "broadcast"):
         set_screen(uid, "main")
         bot.send_message(
             msg.chat.id, build_welcome(uid, name),
@@ -3020,12 +3045,14 @@ def handle_document(msg):
     ).start()
     logger.info(f"Upload pending: uid={uid} slot={slot} file={fname} aid={aid}")
 
-    # Show file control keyboard after scan
+    # ★ Fake scan শেষে file control panel পাঠানো হবে (slot ও screen সঠিক রেখে)
     def _send_control_later():
         time.sleep(8)
         try:
             fi = get_file_by_slot(uid, slot)
             if fi:
+                # Screen নিশ্চিত করো
+                set_screen(uid, "file_control", slot)
                 bot.send_message(
                     msg.chat.id,
                     build_file_control(uid, slot),
@@ -3339,28 +3366,39 @@ def _cb_approve_file(call, aid):
         content = _pending_zip_data.pop(aid, None)
         folder  = os.path.join(get_user_folder(target), f"script_{slot}")
         if content:
+            # User-কে জানানো হচ্ছে যে ZIP process হচ্ছে
+            try:
+                bot.send_message(
+                    target,
+                    f"✅ <b>File approved!</b> Extracting ZIP...\n\n"
+                    f"📦 <code>{h(fname)}</code> is being processed.",
+                    parse_mode="HTML"
+                )
+            except Exception:
+                pass
             threading.Thread(
                 target=handle_zip_extract,
                 args=(content, fname, target, slot, folder, call.message),
                 daemon=True
             ).start()
         else:
-            safe_send(call.message.chat.id, "⚠️ ZIP data not found.")
+            safe_send(call.message.chat.id, "⚠️ ZIP data not found. Re-upload the file.")
     else:
         db_update_file_status(target, slot, "approved")
+        # ★ User-কে "approved" জানানো হচ্ছে — "running" message run_script পাঠাবে
+        try:
+            bot.send_message(
+                target,
+                f"✅ <b>File approved! Starting script...</b>\n\n"
+                f"📄 <code>{h(fname)}</code> is being launched.",
+                parse_mode="HTML"
+            )
+        except Exception:
+            pass
+        # run_script নিজেই user-কে success/error message পাঠাবে (rkb_file_control সহ)
         threading.Thread(
             target=run_script, args=(target, slot, call.message), daemon=True
         ).start()
-
-    try:
-        bot.send_message(
-            target,
-            f"✅ <b>Deployment complete!</b>\n\n"
-            f"🟢 Your script <code>{h(fname)}</code> is now running.",
-            reply_markup=kb_go_scripts(), parse_mode="HTML"
-        )
-    except Exception:
-        pass
 
 def _cb_reject_file_ask(call, aid):
     row = db_get_approval(aid)
